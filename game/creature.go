@@ -61,31 +61,36 @@ type Outfit struct {
 }
 
 type Creature struct {
-	Position  Position
-	Access    uint8
-	World     World
-	ID        uint32
-	Name      string
-	Direction uint8
-	Outfit    Outfit
-	Speed     uint16
-	Skull     uint8
-	Party     uint8
-	Cap       uint16
-	HealthNow uint16
-	HealthMax uint16
-	ManaNow   uint16
-	ManaMax   uint16
-	Combat    Skill
-	Magic     Skill
-	Fist      Skill
-	Club      Skill
-	Sword     Skill
-	Axe       Skill
-	Distance  Skill
-	Shielding Skill
-	Fishing   Skill
-	Light     Light
-	Icons     uint8
-	Tactic    Tactic
+	Position     Position
+	Access       uint8
+	World        World
+	ID           uint32
+	creatureType CreatureType
+	Name         string
+	Direction    DirectionType
+	Outfit       Outfit
+	Speed        uint16
+	Skull        uint8
+	Party        uint8
+	Cap          uint16
+	HealthNow    uint16
+	HealthMax    uint16
+	ManaNow      uint16
+	ManaMax      uint16
+	Combat       Skill
+	Magic        Skill
+	Fist         Skill
+	Club         Skill
+	Sword        Skill
+	Axe          Skill
+	Distance     Skill
+	Shielding    Skill
+	Fishing      Skill
+	Light        Light
+	Icons        uint8
+	Tactic       Tactic
+}
+
+func (c Creature) GetType() *CreatureType {
+	return &c.creatureType
 }

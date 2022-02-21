@@ -1,6 +1,7 @@
 package network
 
 import (
+	"github.com/rwxsu/goot/messages"
 	"net"
 )
 
@@ -8,8 +9,8 @@ const debug = true
 
 // RecvMessage reads the incoming message length (first two bytes), followed by
 // how many bytes the incoming message length is.
-func RecvMessage(c net.Conn) *Message {
-	msg := NewMessage()
+func RecvMessage(c net.Conn) *messages.Message {
+	msg := messages.NewMessage()
 	c.Read(msg.Buffer[0:2]) // incoming message length
 	if msg.Length() == 0 {
 		return nil
@@ -24,7 +25,7 @@ func RecvMessage(c net.Conn) *Message {
 }
 
 // SendMessage sends a message to the given connection.
-func SendMessage(dest net.Conn, msg *Message) {
+func SendMessage(dest net.Conn, msg *messages.Message) {
 	dest.Write(msg.Buffer)
 	if debug {
 		msg.HexDump("send")

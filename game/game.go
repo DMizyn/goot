@@ -1,8 +1,41 @@
 package game
 
+type DirectionType int
+
+var ChatManager *Manager
+var players map[uint32]*Player
+
+func init() {
+	ChatManager = NewChat()
+	players = make(map[uint32]*Player)
+
+	go ChatManager.ProceedData()
+}
+
+func GetPlayerByName(name string) *Player {
+	for _, v := range players {
+		if v.Name == name {
+			return v
+		}
+	}
+	return nil
+}
+
+func GetPlayerByID(id uint32) *Player {
+	return players[id]
+}
+
+func AddPlayer(player Player) {
+	players[player.ID] = &player
+}
+
+func RemovePlayer(player Player) {
+	delete(players, player.ID)
+}
+
 // Direction
 const (
-	North uint8 = iota
+	North DirectionType = iota
 	East
 	South
 	West

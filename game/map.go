@@ -102,7 +102,7 @@ func (m *Map) LoadSector(filename string) {
 }
 
 // MoveCreature on map
-func (m *Map) MoveCreature(c *Creature, pos Position, direction uint8) bool {
+func (m *Map) MoveCreature(c *Creature, pos Position, direction DirectionType) bool {
 	from := m.GetTile(c.Position)
 	to := m.GetTile(pos)
 	if from == nil || to == nil {

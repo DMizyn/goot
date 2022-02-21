@@ -2,9 +2,10 @@ package network
 
 import (
 	"fmt"
-	"net"
-
 	"github.com/rwxsu/goot/game"
+	"github.com/rwxsu/goot/messages"
+	"log"
+	"net"
 )
 
 // Player message type
@@ -13,41 +14,116 @@ const (
 	PlayerMessageTypeCancel uint8 = 0x17
 )
 
-func ParseCommand(c net.Conn, msg *Message, player *game.Creature, m *game.Map, code uint8) {
+const (
+	WALK_NORTH              uint8 = 0x65
+	WALK_EAST               uint8 = 0x66
+	WALK_SOUTH              uint8 = 0x67
+	WALK_WEST               uint8 = 0x68
+	PLAYER_SAY              uint8 = 0x96
+	PLAYER_REQUEST_CHANNELS uint8 = 0x97
+	OPEN_PRIVATE_CHANNEL    uint8 = 0x9A
+	PARSE_FIGHT_MODES       uint8 = 0xa0
+)
+
+func ParseCommand(msg *messages.Message, player *game.Player, m *game.Map, code uint8) {
 	switch code {
-	case 0x65:
-		if !SendMoveCreature(c, m, player, game.North, code) {
-			SendSnapback(c, player)
+	case WALK_NORTH:
+		if !SendMoveCreature(m, player, game.North, code) {
+			SendSnapback(player)
 		}
 		return
-	case 0x66:
-		if !SendMoveCreature(c, m, player, game.East, code) {
-			SendSnapback(c, player)
+	case WALK_EAST:
+		if !SendMoveCreature(m, player, game.East, code) {
+			SendSnapback(player)
 		}
 		return
-	case 0x67:
-		if !SendMoveCreature(c, m, player, game.South, code) {
-			SendSnapback(c, player)
+	case WALK_SOUTH:
+		if !SendMoveCreature(m, player, game.South, code) {
+			SendSnapback(player)
 		}
 		return
-	case 0x68:
-		if !SendMoveCreature(c, m, player, game.West, code) {
-			SendSnapback(c, player)
+	case WALK_WEST:
+		if !SendMoveCreature(m, player, game.West, code) {
+			SendSnapback(player)
 		}
 		return
-	case 0xa0:
+	case PARSE_FIGHT_MODES:
 		player.Tactic.FightMode = msg.ReadUint8()
 		player.Tactic.ChaseOpponent = msg.ReadUint8()
 		player.Tactic.AttackPlayers = msg.ReadUint8()
 		return
+	case PLAYER_SAY:
+		if !parseSay(player, msg) {
+			SendSnapback(player)
+		}
+	case PLAYER_REQUEST_CHANNELS:
+		player.SendChannelsDialog()
+		return
+	case OPEN_PRIVATE_CHANNEL:
+		receiver := msg.ReadString()
+		log.Printf("Receiver: %s\n", receiver)
+		playerOpenPrivateChannel(player, receiver)
+		return
 	default:
-		SendSnapback(c, player)
+		log.Printf("Unknown code: %d\n", code)
+		SendSnapback(player)
 		return
 	}
 }
 
+func playerOpenPrivateChannel(player *game.Player, receiver string) {
+
+	if player == nil {
+		return
+	}
+
+	/*	if game.GetPlayerByName(receiver) == nil {
+		player.SendMessageWarning("A player with this name does not exist.")
+		return
+	}*/
+
+	if player.Name == receiver {
+		player.SendMessageWarning("You cannot set up a private message channel with yourself.")
+		return
+	}
+
+	player.SendOpenPrivateChannel(receiver)
+
+}
+
+func parseSay(player *game.Player, msg *messages.Message) bool {
+	var receiver string
+	var channelId uint16
+	var speakClass = game.SpeakClasses(msg.ReadUint8())
+
+	switch speakClass {
+	case game.TALKTYPE_PRIVATE_FROM:
+		receiver = msg.ReadString()
+		text := msg.ReadString()
+		game.ChatManager.Messages <- game.Message{PlayerId: player.ID, ChannelId: channelId, SpeakClass: speakClass, Receiver: receiver, Text: text}
+		break
+	case game.TALKTYPE_PRIVATE_TO:
+	case game.TALKTYPE_PRIVATE_RED_TO:
+		receiver = msg.ReadString()
+		channelId = 0
+		break
+	case game.TALKTYPE_CHANNEL_Y:
+	case game.TALKTYPE_CHANNEL_R1:
+		channelId = msg.ReadUint16()
+		break
+	default:
+		channelId = 0
+		break
+	}
+
+	var text = msg.ReadString()
+
+	game.ChatManager.Messages <- game.Message{PlayerId: player.ID, ChannelId: channelId, SpeakClass: speakClass, Receiver: receiver, Text: text}
+	return true
+}
+
 func SendInvalidClientVersion(c net.Conn) {
-	msg := NewMessage()
+	msg := messages.NewMessage()
 	msg.WriteUint8(0x0a)
 	msg.WriteString("Only protocol 7.40 allowed!")
 	SendMessage(c, msg)
@@ -61,7 +137,7 @@ func SendCharacterList(c net.Conn) {
 	characters[1].Name = "rwxsu"
 	characters[1].World.Name = "test"
 	characters[1].World.Port = 7171
-	res := NewMessage()
+	res := messages.NewMessage()
 	res.WriteUint8(0x14) // MOTD
 	res.WriteString("Welcome to GoOT.")
 	res.WriteUint8(0x64) // character list
@@ -75,25 +151,25 @@ func SendCharacterList(c net.Conn) {
 		res.WriteUint8(1)
 		res.WriteUint16(characters[i].World.Port)
 	}
-	res.WriteUint16(0) // premium days
+	res.WriteUint16(5) // premium days
 	SendMessage(c, res)
 }
 
-func SendSnapback(c net.Conn, player *game.Creature) {
-	msg := NewMessage()
+func SendSnapback(player *game.Player) {
+	msg := messages.NewMessage()
 	msg.WriteUint8(0xb5)
-	msg.WriteUint8(player.Direction)
-	SendMessage(c, msg)
-	SendCancelMessage(c, "Sorry, not possible.")
+	msg.WriteUint8(uint8(player.Direction))
+	player.Client.WriteMessageToConn(msg)
+	player.Client.SendMessageWarning("Sorry, not possible.")
 }
 
 func SendCancelMessage(c net.Conn, str string) {
-	msg := NewMessage()
+	msg := messages.NewMessage()
 	AddPlayerMessage(msg, str, PlayerMessageTypeCancel)
 	SendMessage(c, msg)
 }
 
-func SendMoveCreature(c net.Conn, m *game.Map, player *game.Creature, direction, code uint8) bool {
+func SendMoveCreature(m *game.Map, player *game.Player, direction game.DirectionType, code uint8) bool {
 	var offset game.Offset
 	var width, height uint16
 	from := player.Position
@@ -128,10 +204,10 @@ func SendMoveCreature(c net.Conn, m *game.Map, player *game.Creature, direction,
 		to.X--
 		break
 	}
-	if !m.MoveCreature(player, to, direction) {
+	if !m.MoveCreature(&player.Creature, to, direction) {
 		return false
 	}
-	msg := NewMessage()
+	msg := messages.NewMessage()
 	msg.WriteUint8(0x6d)
 	AddPosition(msg, from)
 	msg.WriteUint8(0x01) // oldStackPos
@@ -139,12 +215,12 @@ func SendMoveCreature(c net.Conn, m *game.Map, player *game.Creature, direction,
 	msg.WriteUint8(code)
 	msg.WriteUint16(0x63) // Creatureturn? In client's debug error.txt this is the "Parameter" field (0x63 == -1)
 	AddMapDescription(msg, m, to, offset, width, height)
-	SendMessage(c, msg)
+	player.Client.WriteMessageToConn(msg)
 	return true
 }
 
-func SendAddCreature(c net.Conn, character *game.Creature, m *game.Map) {
-	res := NewMessage()
+func SendAddCreature(character *game.Player, m *game.Map) {
+	res := messages.NewMessage()
 	res.WriteUint8(0x0a)
 	res.WriteUint32(character.ID) // ID
 	res.WriteUint16(0x32)         // ?
@@ -161,7 +237,7 @@ func SendAddCreature(c net.Conn, character *game.Creature, m *game.Map) {
 		}
 	}
 	tile := m.GetTile(character.Position)
-	tile.AddCreature(character)
+	tile.AddCreature(&character.Creature)
 	res.WriteUint8(0x64)
 	AddMapDescription(res, m, character.Position, game.Offset{X: -8, Y: -6, Z: 0}, 18, 14)
 	AddMagicEffect(res, character.Position, 0x0a)
@@ -174,28 +250,28 @@ func SendAddCreature(c net.Conn, character *game.Creature, m *game.Map) {
 	AddPlayerMessage(res, "TODO: Last Login String 01-01-1970", PlayerMessageTypeInfo)
 	AddCreatureLight(res, character)
 	AddIcons(res, character)
-	SendMessage(c, res)
+	character.Client.WriteMessageToConn(res)
 }
 
-func AddCreatureLight(msg *Message, c *game.Creature) {
+func AddCreatureLight(msg *messages.Message, c *game.Player) {
 	msg.WriteUint8(0x8d)
 	msg.WriteUint32(c.ID)
 	msg.WriteUint8(c.Light.Level)
 	msg.WriteUint8(c.Light.Color)
 }
 
-func AddWorldLight(msg *Message, w *game.World) {
+func AddWorldLight(msg *messages.Message, w *game.World) {
 	msg.WriteUint8(0x82)
 	msg.WriteUint8(w.Light.Level)
 	msg.WriteUint8(w.Light.Color)
 }
 
-func AddIcons(msg *Message, c *game.Creature) {
+func AddIcons(msg *messages.Message, c *game.Player) {
 	msg.WriteUint8(0xa2)
 	msg.WriteUint8(c.Icons)
 }
 
-func AddSkills(msg *Message, c *game.Creature) {
+func AddSkills(msg *messages.Message, c *game.Player) {
 	msg.WriteUint8(0xa1)
 	msg.WriteUint8(c.Fist.Level)
 	msg.WriteUint8(c.Fist.Percent)
@@ -213,7 +289,7 @@ func AddSkills(msg *Message, c *game.Creature) {
 	msg.WriteUint8(c.Fishing.Percent)
 }
 
-func AddStats(msg *Message, c *game.Creature) {
+func AddStats(msg *messages.Message, c *game.Player) {
 	msg.WriteUint8(0xa0) // send player stats
 	msg.WriteUint16(c.HealthNow)
 	msg.WriteUint16(c.HealthMax)
@@ -227,7 +303,7 @@ func AddStats(msg *Message, c *game.Creature) {
 	msg.WriteUint8(c.Magic.Percent)
 }
 
-func AddInventory(msg *Message, c *game.Creature) {
+func AddInventory(msg *messages.Message, c *game.Player) {
 	msg.WriteUint8(game.SlotEmpty)
 	msg.WriteUint8(game.SlotHead)
 
@@ -264,7 +340,7 @@ func AddInventory(msg *Message, c *game.Creature) {
 	msg.WriteUint8(33)     // count
 }
 
-func AddMapDescription(msg *Message, m *game.Map, pos game.Position, offset game.Offset, width, height uint16) {
+func AddMapDescription(msg *messages.Message, m *game.Map, pos game.Position, offset game.Offset, width, height uint16) {
 	AddPosition(msg, pos)
 	pos.Offset(offset)
 	skip := uint8(0)
@@ -300,25 +376,25 @@ func AddMapDescription(msg *Message, m *game.Map, pos game.Position, offset game
 	}
 }
 
-func AddPosition(msg *Message, pos game.Position) {
+func AddPosition(msg *messages.Message, pos game.Position) {
 	msg.WriteUint16(pos.X)
 	msg.WriteUint16(pos.Y)
 	msg.WriteUint8(pos.Z)
 }
 
-func AddMagicEffect(msg *Message, pos game.Position, kind uint8) {
+func AddMagicEffect(msg *messages.Message, pos game.Position, kind uint8) {
 	msg.WriteUint8(0x83)
 	AddPosition(msg, pos)
 	msg.WriteUint8(kind)
 }
 
-func AddCreature(msg *Message, c *game.Creature) {
+func AddCreature(msg *messages.Message, c *game.Creature) {
 	msg.WriteUint16(0x61) // unknown creature
 	msg.WriteUint32(0x00) // something about caching known creatures
 	msg.WriteUint32(c.ID)
 	msg.WriteString(c.Name)
 	msg.WriteUint8((uint8)(c.HealthNow*100/c.HealthMax) + 1)
-	msg.WriteUint8(c.Direction) // look dir
+	msg.WriteUint8(uint8(c.Direction)) // look dir
 	msg.WriteUint8(c.Outfit.Type)
 	msg.WriteUint8(c.Outfit.Head)
 	msg.WriteUint8(c.Outfit.Body)
@@ -333,7 +409,7 @@ func AddCreature(msg *Message, c *game.Creature) {
 
 // AddTile adds all the tile items and creatures WITHOUT the end of tile
 //delimeter (0xSKIP-0xff)
-func AddTile(msg *Message, tile *game.Tile) {
+func AddTile(msg *messages.Message, tile *game.Tile) {
 	for _, i := range tile.Items {
 		msg.WriteUint16(i.ID)
 	}
@@ -342,7 +418,7 @@ func AddTile(msg *Message, tile *game.Tile) {
 	}
 }
 
-func AddPlayerMessage(msg *Message, str string, kind uint8) {
+func AddPlayerMessage(msg *messages.Message, str string, kind uint8) {
 	msg.WriteUint8(0xb4)
 	msg.WriteUint8(kind)
 	msg.WriteString(str)

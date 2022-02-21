@@ -1,4 +1,4 @@
-package network
+package messages
 
 import (
 	"encoding/binary"

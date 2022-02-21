@@ -40,12 +40,12 @@ func acceptConnections(l net.Listener, m game.Map) {
 
 func handleConnection(c net.Conn, m game.Map) {
 	// Placeholder player
-	player := game.Creature{
+	creature := game.Creature{
 		ID:        0x04030201,
 		Access:    game.Tutor,
-		Name:      "rwxsu",
+		Name:      "DUPA",
 		Cap:       50,
-		Combat:    game.Skill{Level: 8, Percent: 0, Experience: 4200},
+		Combat:    game.Skill{Level: 8, Percent: 20, Experience: 4200},
 		HealthNow: 100,
 		HealthMax: 200,
 		ManaNow:   50,
@@ -71,8 +71,14 @@ func handleConnection(c net.Conn, m game.Map) {
 		Icons: 1,
 		Light: game.Light{Level: 0x7, Color: 0xd7},
 		World: game.World{Light: game.Light{Level: 0x00, Color: 0xd7}},
-		Speed: 60000,
+		Speed: 200,
 	}
+
+	client := game.Client{
+		Client: c,
+	}
+
+	player := game.Player{Creature: creature, Client: client}
 connectionLoop:
 	for {
 		req := network.RecvMessage(c)
@@ -95,11 +101,12 @@ connectionLoop:
 				network.SendInvalidClientVersion(c)
 				break connectionLoop
 			}
-			network.SendAddCreature(c, &player, &m)
+			game.AddPlayer(player)
+			network.SendAddCreature(&player, &m)
 		case 0x14: // logout
 			break connectionLoop
 		default:
-			network.ParseCommand(c, req, &player, &m, code)
+			network.ParseCommand(req, &player, &m, code)
 		}
 	}
 	if err := c.Close(); err != nil {
