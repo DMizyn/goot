@@ -25,11 +25,11 @@ func GetPlayerByID(id uint32) *Player {
 	return players[id]
 }
 
-func AddPlayer(player Player) {
-	players[player.ID] = &player
+func AddPlayer(player *Player) {
+	players[player.ID] = player
 }
 
-func RemovePlayer(player Player) {
+func RemovePlayer(player *Player) {
 	delete(players, player.ID)
 }
 

@@ -1,10 +1,14 @@
 package main
 
 import (
+	"encoding/hex"
+	"github.com/rwxsu/goot/database"
+	"github.com/rwxsu/goot/messages"
 	"log"
 	"net"
 	"path/filepath"
 
+	_ "github.com/rwxsu/goot/database"
 	"github.com/rwxsu/goot/game"
 	"github.com/rwxsu/goot/network"
 )
@@ -39,46 +43,11 @@ func acceptConnections(l net.Listener, m game.Map) {
 }
 
 func handleConnection(c net.Conn, m game.Map) {
-	// Placeholder player
-	creature := game.Creature{
-		ID:        0x04030201,
-		Access:    game.Tutor,
-		Name:      "DUPA",
-		Cap:       50,
-		Combat:    game.Skill{Level: 8, Percent: 20, Experience: 4200},
-		HealthNow: 100,
-		HealthMax: 200,
-		ManaNow:   50,
-		ManaMax:   100,
-		Magic:     game.Skill{Level: 10, Percent: 50},
-		Fist:      game.Skill{Level: 10, Percent: 50},
-		Club:      game.Skill{Level: 10, Percent: 50},
-		Sword:     game.Skill{Level: 10, Percent: 50},
-		Axe:       game.Skill{Level: 10, Percent: 50},
-		Distance:  game.Skill{Level: 10, Percent: 50},
-		Shielding: game.Skill{Level: 10, Percent: 50},
-		Fishing:   game.Skill{Level: 10, Percent: 50},
-		Direction: game.South,
-		Position:  game.Position{X: 32000, Y: 32000, Z: 7},
-		Outfit: game.Outfit{
-			Type: 0x80,
-			Head: 0x50,
-			Body: 0x50,
-			Legs: 0x50,
-			Feet: 0x50,
-		},
-		Skull: 3,
-		Icons: 1,
-		Light: game.Light{Level: 0x7, Color: 0xd7},
-		World: game.World{Light: game.Light{Level: 0x00, Color: 0xd7}},
-		Speed: 200,
-	}
-
 	client := game.Client{
 		Client: c,
 	}
-
-	player := game.Player{Creature: creature, Client: client}
+	creature := game.Creature{}
+	player := &game.Player{Creature: creature, Client: client}
 connectionLoop:
 	for {
 		req := network.RecvMessage(c)
@@ -88,12 +57,7 @@ connectionLoop:
 		code := req.ReadUint8()
 		switch code {
 		case 0x01: // request character list
-			req.SkipBytes(2) // os := req.ReadUint16()
-			if req.ReadUint16() != 740 {
-				network.SendInvalidClientVersion(c)
-				break connectionLoop
-			}
-			network.SendCharacterList(c)
+			parseFirstPacket(c, req)
 			break connectionLoop
 		case 0x0a: // request character login
 			req.SkipBytes(2) // os := req.ReadUint16()
@@ -101,15 +65,52 @@ connectionLoop:
 				network.SendInvalidClientVersion(c)
 				break connectionLoop
 			}
+			req.SkipBytes(4)
+			playerName := req.ReadString()
+			var name string = "Goots"
+			log.Println("HEXDUMP\n", hex.Dump([]byte(playerName)))
+			err := database.LoadPlayerByName(player, name)
+			if err != nil {
+				log.Println(err)
+			}
 			game.AddPlayer(player)
-			network.SendAddCreature(&player, &m)
+			network.SendAddCreature(player, &m)
 		case 0x14: // logout
 			break connectionLoop
 		default:
-			network.ParseCommand(req, &player, &m, code)
+			network.ParseCommand(req, player, &m, code)
 		}
 	}
 	if err := c.Close(); err != nil {
 		log.Printf("Unable to close connection %v\n", err)
 	}
+}
+
+func parseFirstPacket(c net.Conn, msg *messages.Message) bool {
+	msg.SkipBytes(2) // os := req.ReadUint16()
+	if msg.ReadUint16() != 740 {
+		network.SendInvalidClientVersion(c)
+		return false
+	}
+
+	msg.SkipBytes(12)
+
+	accNumber := msg.ReadUint32()
+	password := msg.ReadString()
+
+	log.Printf("SCID_6476465276 Account number: %d, password: %s ", accNumber, password)
+	account, error := database.GetAccountById(accNumber)
+	if error != nil {
+		log.Fatalln(error)
+		network.SendInvalidAccountOrPassword(c)
+		return false
+	}
+
+	if account.Id != accNumber || account.Password != password {
+		network.SendInvalidAccountOrPassword(c)
+		return false
+	}
+
+	network.SendCharacterList2(c, account.Characters)
+	return true
 }

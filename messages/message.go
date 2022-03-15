@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"log"
 )
 
 // NewMessage allocates the first two bytes for the message length and sets the
@@ -65,10 +66,12 @@ func (p *Message) ReadString() string {
 	}
 	var str string
 	strlen := p.ReadUint16()
+	log.Printf("New String lenght is: %v", strlen)
 	for i := (uint16)(0); i < strlen; i++ {
 		str += (string)(p.ReadUint8())
 	}
 	return str
+
 }
 
 // WriteUint8 writes the given byte to the message buffer. Increments message
