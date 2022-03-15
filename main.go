@@ -1,16 +1,14 @@
 package main
 
 import (
-	"encoding/hex"
 	"github.com/rwxsu/goot/database"
+	_ "github.com/rwxsu/goot/database"
+	"github.com/rwxsu/goot/game"
 	"github.com/rwxsu/goot/messages"
+	"github.com/rwxsu/goot/network"
 	"log"
 	"net"
 	"path/filepath"
-
-	_ "github.com/rwxsu/goot/database"
-	"github.com/rwxsu/goot/game"
-	"github.com/rwxsu/goot/network"
 )
 
 func main() {
@@ -65,17 +63,16 @@ connectionLoop:
 				network.SendInvalidClientVersion(c)
 				break connectionLoop
 			}
-			req.SkipBytes(4)
-			playerName := req.ReadString()
-			var name string = "Goots"
-			log.Println("HEXDUMP\n", hex.Dump([]byte(playerName)))
-			err := database.LoadPlayerByName(player, name)
+			req.SkipBytes(5)
+			characterName := req.ReadString()
+			log.Printf("PlayerName: %s", characterName)
+			err := database.LoadPlayerByName(player, characterName)
 			if err != nil {
 				log.Println(err)
 			}
 			game.AddPlayer(player)
 			network.SendAddCreature(player, &m)
-		case 0x14: // logout
+		case 0x14: //
 			break connectionLoop
 		default:
 			network.ParseCommand(req, player, &m, code)
@@ -111,6 +108,6 @@ func parseFirstPacket(c net.Conn, msg *messages.Message) bool {
 		return false
 	}
 
-	network.SendCharacterList2(c, account.Characters)
+	network.SendCharacterList(c, account.Characters)
 	return true
 }
